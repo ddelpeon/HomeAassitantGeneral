@@ -1,0 +1,143 @@
+- spec:
+    name: execute_services
+    description: Use this function to execute service of devices in Home Assistant.
+    parameters:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            type: object
+            properties:
+              domain:
+                type: string
+                description: The domain of the service
+              service:
+                type: string
+                description: The service to be called
+              service_data:
+                type: object
+                description: The service data object to indicate what to control.
+                properties:
+                  entity_id:
+                    type: string
+                    description: The entity_id retrieved from available devices. It
+                      must start with domain, followed by dot character.
+                required:
+                - entity_id
+            required:
+            - domain
+            - service
+            - service_data
+  function:
+    type: native
+    name: execute_service
+
+- spec:
+    name: get_entity_state
+    description: Obtiene el estado detallado y todos los atributos de una entidad específica en hora local.
+    parameters:
+      type: object
+      properties:
+        entity_id:
+          type: string
+          description: El entity_id de la entidad a consultar.
+      required:
+      - entity_id
+  function:
+    type: template
+    value_template: >
+      {% set s = states[entity_id] %}
+      {% if s is not none %}
+        {% set ns = namespace(attrs={}) %}
+        {% for k, v in s.attributes.items() %}
+          {% if v is string or v is number or v is boolean or v is none %}
+            {% set ns.attrs = dict(ns.attrs, **{k: v}) %}
+          {% else %}
+            {% set ns.attrs = dict(ns.attrs, **{k: v | string}) %}
+          {% endif %}
+        {% endfor %}
+        {# Convertimos los timestamps UTC nativos a la hora local configurada en HA #}
+        {% set lc = as_local(s.last_changed).strftime('%Y-%m-%d %H:%M:%S') %}
+        {% set lu = as_local(s.last_updated).strftime('%Y-%m-%d %H:%M:%S') %}
+        {{ {'entity_id': s.entity_id, 'state': s.state, 'attributes': ns.attrs, 'last_changed_local': lc, 'last_updated_local': lu} | to_json }}
+      {% else %}
+        {"error": "Entidad no encontrada"}
+      {% endif %}
+    
+- spec:
+    name: find_entity_by_name
+    description: Busca el entity_id de un dispositivo usando su nombre común o friendly name.
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+          description: El nombre del dispositivo o sensor a buscar (ej. "Luz Comedor", "Life360 Paola").
+      required:
+      - name
+  function:
+    type: template
+    value_template: >
+      {% set ns = namespace(found=[]) %}
+      {% for s in states %}
+        {% if name.lower() in s.name.lower() %}
+          {% set ns.found = ns.found + [s.entity_id ~ ' (' ~ s.state ~ ')'] %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.found | join(', ') if ns.found else 'No encontrado' }}
+
+- spec:
+    name: send_whatsapp
+    description: Envía un mensaje de WhatsApp a un contacto predefinido.
+    parameters:
+      type: object
+      properties:
+        contacto:
+          type: string
+          description: "Nombre del contacto. Valores posibles: damian, paola, julia, ignacio, emilia"
+        mensaje:
+          type: string
+          description: Texto exacto a enviar por WhatsApp
+      required:
+        - contacto
+        - mensaje
+  function:
+    type: script
+    sequence:
+      - service: >
+          {% if contacto == 'damian' %}
+            script.whatsapp_damian
+          {% elif contacto == 'paola' %}
+            script.whatsapp_paola
+          {% elif contacto == 'julia' %}
+            script.whatsapp_julia
+          {% elif contacto == 'igancio' %}
+            script.whatsapp_ignacio
+          {% elif contacto == 'emilia' %}
+            script.whatsapp_emilia
+          {% endif %}
+        data:
+          message: "{{ mensaje }}"
+  
+- spec:
+    name: get_entity_history
+    description: Obtiene estadísticas históricas de un sensor numérico (como temperatura o humedad) para analizar tendencias pasadas.
+    parameters:
+      type: object
+      properties:
+        entity_id:
+          type: string
+          description: El entity_id de la entidad a consultar (debe ser un sensor numérico).
+        hours:
+          type: number
+          description: Cantidad de horas hacia atrás a consultar (ej. 24).
+      required:
+      - entity_id
+  function:
+    type: template
+    value_template: >
+      {% set h = hours | default(24) | int %}
+      {% set stats = [{'state': states(entity_id), 'last_changed': states[entity_id].last_changed | string}] %}
+      {# Retornamos el último estado real y su metadata para que la IA entienda el cambio más reciente #}
+      {{ {'entity_id': entity_id, 'period_hours': h, 'recent_history': stats} | to_json }}

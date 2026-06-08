@@ -141,3 +141,40 @@
       {% set stats = [{'state': states(entity_id), 'last_changed': states[entity_id].last_changed | string}] %}
       {# Retornamos el último estado real y su metadata para que la IA entienda el cambio más reciente #}
       {{ {'entity_id': entity_id, 'period_hours': h, 'recent_history': stats} | to_json }}
+
+
+- spec:
+    name: schedule_task
+    description: Programa una acción o recordatorio para ejecutarse en una fecha y hora futura.
+    parameters:
+      type: object
+      properties:
+        task_type:
+          type: string
+          description: device_action o reminder
+        entity_id:
+          type: string
+          description: entity_id del dispositivo. Vacío para recordatorios.
+        action:
+          type: string
+          description: Acción a realizar (turn_on, turn_off, reminder, etc).
+        execute_at:
+          type: string
+          description: Fecha y hora ISO8601 con zona horaria.
+        message:
+          type: string
+          description: Mensaje o instrucción a ejecutar cuando llegue la fecha.
+      required:
+        - task_type
+        - execute_at
+        - message
+  function:
+    type: script
+    sequence:
+      - service: rest_command.schedule_send
+        data:
+          task_type: "{{ task_type }}"
+          entity_id: "{{ entity_id | default('') }}"
+          action: "{{ action | default('') }}"
+          execute_at: "{{ execute_at }}"
+          message: "{{ message }}"
